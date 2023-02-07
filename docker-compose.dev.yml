@@ -1,0 +1,92 @@
+version: '3.7'
+services:
+  web:
+    container_name: ${PROJECT_NAME}_WEB
+    hostname: WebValueObject
+    networks:
+      - default
+      - project-network
+    image: nginx:latest
+    restart: always
+    volumes:
+      #Set default configuration to nginx  
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d/
+      # share projet folder with nginx
+      - .:/var/www/app
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.value_object_symfony.loadbalancer.server.port=80"
+      - "traefik.http.routers.value_object_symfony.rule=Host(`${DOMAINE}.traefik.me`)"
+      - "traefik.http.routers.value_object_symfony-tls.tls.domains[0].main=${DOMAINE}.traefik.me"
+      - "traefik.http.routers.value_object_symfony-tls.tls.domains[0].sans=${DOMAINE}-*.traefik.me"
+      - "traefik.http.routers.value_object_symfony.tls=true"
+
+  php:
+    container_name: ${PROJECT_NAME}_PHP
+    hostname: PhpValueObject
+    networks:
+      - project-network
+      - default
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+      args:
+        USER_ID: '${USER_ID:-1000}'
+        GROUP_ID: '${GROUP_ID:-1000}'
+        USER: '${USER:-User}'
+
+    volumes:
+      - .:/var/www/app
+    env_file:
+      - .env
+    depends_on:
+      - mysql
+  mysql:
+    image: mariadb:latest
+    container_name: ${PROJECT_NAME}_MYSQL
+    hostname: BddValueObject
+    networks:
+      - project-network
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    volumes:
+      - mysqldata_symfony:/var/lib/mysql
+    # ports:
+    #   - 3306:3306
+    env_file:
+      - .env
+  phpmyadmin:
+    container_name: ${PROJECT_NAME}_PMA
+    hostname: PmaValueObject
+    networks:
+      - default
+      - project-network
+    image: phpmyadmin
+    restart: on-failure
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      PMA_HOSTS: BddValueObject
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.phpmyadmin.loadbalancer.server.port=80"
+      - "traefik.http.routers.phpmyadmin.rule=Host(`pma.traefik.me`)"
+      - "traefik.http.routers.phpmyadmin-tls.tls.domains[0].main=pma.traefik.me"
+      - "traefik.http.routers.phpmyadmin-tls.tls.domains[0].sans=pma-*.traefik.me"
+      - "traefik.http.routers.phpmyadmin.tls=true"
+
+networks:
+  default:
+    name: dev
+  project-network:
+    name: ${PROJECT_NAME}-NETOWRKs
+    internal: true
+volumes:
+  mysqldata_symfony: {}
